@@ -2,7 +2,7 @@
 
 ## OpenAI Luna Decisions (fork feature)
 
-`reviewer.engine: luna` adds the native OpenAI Decisions reviewer while retaining LLM/Jev. Egress and automatic allowance default off. See [configuration, safety boundaries, Desktop setup and test status](docs/luna-decisions.md). This branch has mock/library integration coverage; live Desktop/API verification is pending.
+`reviewer.engine: luna` adds the native OpenAI Decisions reviewer while retaining LLM/Jev. Egress and automatic allowance default off. See [configuration, safety boundaries, Desktop setup and test status](docs/luna-decisions.md). This branch has mock/library integration coverage and one successful paid native API contract test; Desktop profile/UI verification is pending.
 
 
 0.6.2 fixed only the removal direction, and the live host immediately showed the
