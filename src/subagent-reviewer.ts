@@ -1,3 +1,4 @@
+import { compatibleTexts } from './message-compat.ts'
 /**
  * Subagent-backed reviewer.
  *
@@ -87,15 +88,7 @@ export interface SubagentReviewInput {
 
 /** Join text blocks from a child's output, walking nested tool-result blocks. */
 function childText(blocks: readonly ContentBlock[]): string {
-  const out: string[] = []
-  const walk = (list: readonly ContentBlock[]): void => {
-    for (const block of list) {
-      if (block.type === 'text') out.push(block.text)
-      else if (block.type === 'tool-result') walk(block.content)
-    }
-  }
-  walk(blocks)
-  return out.join('\n')
+  return compatibleTexts(blocks).join('\n')
 }
 
 /**
@@ -147,7 +140,7 @@ export async function runSubagentReviewer(
     ...input.outputLanguage === undefined ? {} : { outputLanguage: input.outputLanguage },
     exactActionApproval: input.exactActionApproval === true,
   })
-  const prompt: ContentBlock[] = evidence.content
+  const prompt: ContentBlock[] = [...evidence.content]
   const controller = new AbortController()
 
   const readTools = input.reviewerTools.filter(tool => ['read', 'glob', 'grep'].includes(tool))

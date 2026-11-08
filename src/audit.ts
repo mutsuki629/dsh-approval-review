@@ -1,3 +1,4 @@
+import { compatibleTexts, compatibleCallId } from './message-compat.ts'
 /**
  * The audit ledger and its session projection — the data source for the review
  * card page.
@@ -457,15 +458,7 @@ function cap(records: readonly AuditRecord[]): readonly AuditRecord[] {
 
 /** Every text block inside a tool result, including nested ones. */
 function toolResultTexts(event: Extract<SessionEvent, { type: 'tool/result' }>): string[] {
-  const texts: string[] = []
-  const walk = (blocks: readonly ContentBlock[]): void => {
-    for (const block of blocks) {
-      if (block.type === 'text') texts.push(block.text)
-      else if (block.type === 'tool-result') walk(block.content)
-    }
-  }
-  walk(event.data.message.content)
-  return texts
+  return compatibleTexts(event.data.message.content)
 }
 
 /** Bound and normalize one raw argument string for the preview. */
@@ -484,10 +477,7 @@ function previewArguments(raw: string): string | undefined {
  * @returns the call id, when the message shape exposes one.
  */
 function callIdOfToolResult(event: Extract<SessionEvent, { type: 'tool/result' }>): string | undefined {
-  for (const block of event.data.message.content) {
-    if (block.type === 'tool-result') return block.toolCallId
-  }
-  return undefined
+  return compatibleCallId(event.data.message)
 }
 
 /** Fields recovered out of a refusal marker. */

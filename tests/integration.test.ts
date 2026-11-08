@@ -74,6 +74,23 @@ function fakeAgent(seed: Array<{ type: string; data?: Record<string, unknown> }>
   return { agent, appended, events }
 }
 
+/** Newer DSH approval owns a projection. Fold its real unit over the fake session log. */
+async function mountApproval(ctx: Context): Promise<void> {
+  ctx.provide('sessionProjections', {
+    snapshot: () => ({ values: {} }),
+    register: (unit: any) => ({
+      stateOf: (session: any) => {
+        let state = unit.init(session.header, 0)
+        for (let i=0;i<session.seq;i++) state=unit.apply(state,session.eventAt(i))
+        return state
+      },
+      dispose: async () => {},
+    }),
+  } as never)
+  await ctx.plugin(ApprovalService)
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
 /** Mount the approval seam, the LLM runtime, and the plugin under test. */
 async function mounted(overrides: Record<string, unknown> = {}): Promise<{
   ctx: Context
@@ -81,7 +98,7 @@ async function mounted(overrides: Record<string, unknown> = {}): Promise<{
   config: ConfigShape
 }> {
   const ctx = new Context()
-  await ctx.plugin(ApprovalService)
+  await mountApproval(ctx)
   await ctx.plugin(CommandRuntime)
   const reviewer = new ScriptedReviewer()
   const llm = new LlmRuntime(ctx)
@@ -436,7 +453,7 @@ describe('approval audit trail', () => {
 
   it('delegates instead of crashing when no reviewer route can be resolved', async () => {
     const ctx = new Context()
-    await ctx.plugin(ApprovalService)
+    await mountApproval(ctx)
     await ctx.plugin(CommandRuntime)
     const reviewer = new ScriptedReviewer()
     new LlmRuntime(ctx).registerAdapter(['test'], reviewer)
@@ -774,7 +791,7 @@ describe('reviewer failure budget', () => {
     // the reviewer cannot run — and with `onReviewerFailure: rejected` the
     // deployment refuses rather than asking.
     const ctx = new Context()
-    await ctx.plugin(ApprovalService)
+    await mountApproval(ctx)
     await ctx.plugin(CommandRuntime)
     const reviewer = new ScriptedReviewer()
     new LlmRuntime(ctx).registerAdapter(['test'], reviewer)

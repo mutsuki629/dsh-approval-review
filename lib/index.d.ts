@@ -23,6 +23,13 @@ type ToolPolicy = 'ai' | 'human' | 'never';
 /** Risk grades a reviewer may report, ordered from least to most dangerous. */
 type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 type UserAuthorization = 'high' | 'medium' | 'low' | 'unknown';
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'approval-review': {
+      readonly kind: 'approval-review';
+    };
+  }
+}
 interface LunaConfig {
   readonly endpoint: string;
   readonly model: string;
