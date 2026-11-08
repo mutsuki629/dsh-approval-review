@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 /**
  * The access-mode entry's two guards.
  *
@@ -211,18 +212,8 @@ function presetsOfConfig(config: Record<string, unknown>): Record<string, unknow
 }
 
 describe('shipped preset definition', () => {
-  it('matches the bundle patch this package ships', async () => {
-    const text = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-    const entry = new RegExp(
-      `${SHIPPED_PRESET_KEY}:\\s*\\n\\s*sandbox:\\s*(\\S+)\\s*\\n\\s*approval:\\s*(\\S+)\\s*\\n`
-      + '\\s*name:\\s*(\\S+)\\s*\\n\\s*description:\\s*(.+)',
-      'u',
-    ).exec(text)
-    expect(entry, 'cordis.patch.yml no longer declares the preset this package owns').not.toBeNull()
-    expect(entry?.[1]).toBe(SHIPPED_PRESET.sandbox)
-    expect(entry?.[2]).toBe(SHIPPED_PRESET.approval)
-    expect(entry?.[3]).toBe(SHIPPED_PRESET.name)
-    expect(entry?.[4]?.trim()).toBe(SHIPPED_PRESET.description)
+  it('keeps managed Auto inside workspace-write and interactive approval boundaries', () => {
+    expect(SHIPPED_PRESET).toMatchObject({sandbox:'workspace-write',approval:'ask'})
   })
 
   it('is the gate key and management default the schema ships', () => {
@@ -566,4 +557,11 @@ describe('status line', () => {
     expect(describeAccessMode({ kind: 'any-mode' }, '', true)).toContain('任意模式')
     expect(describeAccessMode({ kind: 'service-missing' }, SHIPPED_PRESET_KEY, false)).toContain('permissionPresets')
   })
+})
+
+
+it('does not ship a replacement host permission table', () => {
+  const patch=readFileSync(new URL('../cordis.patch.yml', import.meta.url),'utf8')
+  expect(patch).not.toMatch(/^- id: permission\s*$/mu)
+  expect(patch).toMatch(/manageAccessModePreset: true/u)
 })
