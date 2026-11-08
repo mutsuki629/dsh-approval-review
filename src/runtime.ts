@@ -49,6 +49,7 @@ import type { ReviewVerdict, ToolPolicy } from './review-types.ts'
 import { ReviewSessions, type GuardLimits } from './review-session.ts'
 import { VerdictCache } from './verdict-cache.ts'
 import { runSubagentReviewer } from './subagent-reviewer.ts'
+import { runLunaReviewer } from './luna-reviewer.ts'
 import { runJevReviewer } from './jev-reviewer.ts'
 import { createInspector } from './inspection.ts'
 import { resolveOutputLanguage } from './output-language.ts'
@@ -181,6 +182,7 @@ export class ReviewRuntime {
       ...state?.modelOverride === undefined ? {} : { overrideModel: state.modelOverride },
       defaultProvider: this.reviewerProviderLabel,
       defaultModel: this.reviewerModelLabel,
+      lunaPermitted: this.config.reviewer.luna.allowEgress,
       jevPermitted: this.config.reviewer.jev.allowEgress,
     })
   }
@@ -238,12 +240,12 @@ export class ReviewRuntime {
 
   /** Provider half of the reviewer route the card and status report show. */
   private get reviewerProviderLabel(): string {
-    return this.config.reviewer.engine === 'jev' ? 'typesafe' : this.config.reviewer.provider ?? ''
+    return this.config.reviewer.engine === 'luna' ? 'openai-decisions' : this.config.reviewer.engine === 'jev' ? 'typesafe' : this.config.reviewer.provider ?? ''
   }
 
   /** Model half of the reviewer route the card and status report show. */
   private get reviewerModelLabel(): string {
-    return this.config.reviewer.engine === 'jev' ? this.config.reviewer.jev.model : this.config.reviewer.model ?? ''
+    return this.config.reviewer.engine === 'luna' ? this.config.reviewer.luna.model : this.config.reviewer.engine === 'jev' ? this.config.reviewer.jev.model : this.config.reviewer.model ?? ''
   }
 
   /** Reviewer failures recorded in the open turn, for the status report. */
@@ -353,6 +355,7 @@ export class ReviewRuntime {
       defaultReviewerModel: this.reviewerModelLabel,
       defaultReviewerProvider: this.reviewerProviderLabel,
       defaultReviewerEngine: this.config.reviewer.engine,
+      defaultLunaPermitted: this.config.reviewer.luna.allowEgress,
       defaultJevPermitted: this.config.reviewer.jev.allowEgress,
       resolvePolicy: (toolName, reason, argumentsText) => this.resolvePolicy(toolName, reason, argumentsText),
     })
@@ -401,6 +404,7 @@ export class ReviewRuntime {
         defaultReviewerModel: this.reviewerModelLabel,
         defaultReviewerProvider: this.reviewerProviderLabel,
         defaultReviewerEngine: this.config.reviewer.engine,
+        defaultLunaPermitted: this.config.reviewer.luna.allowEgress,
         defaultJevPermitted: this.config.reviewer.jev.allowEgress,
       }),
       consecutiveDenials: live.consecutiveDenials,
@@ -579,7 +583,9 @@ export class ReviewRuntime {
     // endpoint plus the Jev model, and it must be synthesized BEFORE the no-route
     // guard below. Otherwise a Jev deployment whose agent has no provider or model
     // would delegate every request and never call Jev at all.
-    const route: ReviewerRoute | undefined = identity.engine === 'jev'
+    const route: ReviewerRoute | undefined = identity.engine === 'luna'
+      ? { provider: 'openai-decisions', model: identity.model }
+      : identity.engine === 'jev'
       ? { provider: JEV_ROUTE_PROVIDER, model: identity.model.length > 0 ? identity.model : this.config.reviewer.jev.model }
       : resolveReviewerRoute(
         {
@@ -660,7 +666,16 @@ export class ReviewRuntime {
           + `using ${this.config.reviewer.jev.model} instead`)
       }
     }
-    const result = identity.engine === 'jev'
+    const result = identity.engine === 'luna'
+      ? await runLunaReviewer({
+        ...this.config.reviewer.luna,
+        model: route.model,
+        credential: (await resolveJevApiKey({ envName: this.config.reviewer.luna.apiKeyEnv,
+          seam: readCredentialSeam(this.ctx.get('credentials')), env: process.env })).key,
+        evidence: { toolName: req.toolName, argumentsText, transcript: '', userIntent },
+        ...req.signal === undefined ? {} : { signal: req.signal },
+      })
+      : identity.engine === 'jev'
       ? await runJevReviewer({
         endpoint: this.config.reviewer.jev.endpoint,
         // The resolved route carries the session override, so `/approval-review
@@ -779,12 +794,21 @@ export class ReviewRuntime {
     const reviewerRoute = routeLabel ?? `${route.provider}/${route.model}`
 
     if (req.signal?.aborted === true) return 'cancelled'
-    const gate = applyVerdictGates(this.config, verdict)
+    // A Luna failure/uncertainty must never inherit legacy fail-open settings.
+    const gate = applyVerdictGates(route.provider === 'openai-decisions'
+      ? { ...this.config, onUncertain: 'delegate', onReviewerFailure: 'delegate' } : this.config, verdict)
     if (gate.action === 'delegate') {
       this.ctx.logger('dsh-approval-review').info(
         `delegating tool "${req.toolName}" to the human chain: ${gate.note}${failure === undefined ? '' : ` (${failure})`}`,
       )
-      return await this.delegate(req, verdict === undefined ? 'reviewer-failure' : gate.note, next)
+      const outcome = await this.delegate(req, verdict === undefined ? 'reviewer-failure' : gate.note, next)
+      if (route.provider === 'openai-decisions') {
+        const marker = formatReviewMarker({ reason: verdict?.reason ?? failure ?? gate.note,
+          reviewerRoute, durationMs, uncertain: true })
+        if (outcome === 'allowed-once') this.putAllowance(callId, { marker })
+        else if (outcome === 'rejected') this.putRefusal(callId, { marker, hardStop: false })
+      }
+      return outcome
     }
 
     if (gate.action === 'allow') {

@@ -295,7 +295,7 @@ export function LedgerView({ view, t, runCommand, modelChoices, loadModelRoutes 
   // the Jev rows are offered whenever the deployment permitted Jev at all — not
   // only while Jev happens to be the engine in force. The offer never moves with
   // the current selection.
-  const pickerChoices = reviewerModelChoices(view?.jevSelectable === true, choices)
+  const pickerChoices = reviewerModelChoices(view?.jevSelectable === true, choices, view?.lunaSelectable === true)
   const records = view?.records ?? []
   const denials = useMemo(() => records.filter(r => r.refused), [records])
   const reviewedCount = useMemo(() => records.filter(r => r.policy === 'ai').length, [records])

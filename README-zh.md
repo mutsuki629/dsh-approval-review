@@ -1,5 +1,10 @@
 ## 0.6.4：安装那一半也跳出重载事务
 
+## OpenAI Luna Decisions（Fork 功能）
+
+新增 `reviewer.engine: luna`，保留 LLM/Jev。默认不发送外部请求、不自动放行。配置、安全边界、Desktop 安装步骤与未验证项目见 [Luna 文档](docs/luna-decisions.md)。目前仅完成模拟与 DSH 库级集成测试；Desktop 实机和付费 API 尚未验证。
+
+
 0.6.2 只修了卸载方向，真实环境随即暴露出另一半：**启用/安装本身也是一次 HMR 事务**，所以挂载时「补写缺失预设」的写入同样被 `HMR transactions cannot be nested` 拒绝（日志：`access-mode preset check failed — could not write preset "approve-for-me"`）。本版让两个方向共用同一个「事务之外」的写入入口：先 `hmr.executing.exit(...)` 再调 `configEditor.edit()`，此时写入会**排队等当前重载结束**而不是失败；第一次尝试不再预先等待（避免无谓推迟菜单出现），后续重试覆盖「行在重载中被替换」。对应新增两条回归测试：挂载发生在事务内时写入必须成功；无法跳出时必须明确报失败。
 
 ## 0.6.3：让「跑的是哪一版」一眼可查

@@ -1,7 +1,7 @@
 {
   "name": "dsh-approval-review",
-  "version": "0.6.4",
-  "description": "Codex-style auto-approval for DeepSeek Harness. An independent reviewer decides allow/deny, fail-closed, with a rationale for every decision. Engine: an LLM route, or TypeSafe's Jev (`reviewer.engine`). · DSH 插件：独立复核器裁决，引擎可选 LLM 路由或 Jev。",
+  "version": "0.6.4-mu.1",
+  "description": "Codex-style auto-approval for DeepSeek Harness. An independent reviewer decides allow/deny, fail-closed, with a rationale for every decision. Engine: an LLM route, or TypeSafe's Jev (`reviewer.engine`). \u00b7 DSH \u63d2\u4ef6\uff1a\u72ec\u7acb\u590d\u6838\u5668\u88c1\u51b3\uff0c\u5f15\u64ce\u53ef\u9009 LLM \u8def\u7531\u6216 Jev\u3002",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/index.d.ts",
@@ -58,7 +58,6 @@
       ]
     }
   },
-  "dependencies": {},
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
     "@deepseek-ai/dsh-agent": ">=0.1.5-rc.2 <0.2.0",
@@ -97,11 +96,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LAwLi3tCoding/dsh-approval-review.git"
+    "url": "git+https://github.com/mutsuki629/dsh-approval-review.git"
   },
   "bugs": {
-    "url": "https://github.com/LAwLi3tCoding/dsh-approval-review/issues"
+    "url": "https://github.com/mutsuki629/dsh-approval-review/issues"
   },
-  "homepage": "https://github.com/LAwLi3tCoding/dsh-approval-review#readme",
+  "homepage": "https://github.com/mutsuki629/dsh-approval-review#readme",
   "author": "LAwLi3tCoding"
 }

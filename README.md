@@ -1,5 +1,10 @@
 ## 0.6.4: the install half leaves the transaction too
 
+## OpenAI Luna Decisions (fork feature)
+
+`reviewer.engine: luna` adds the native OpenAI Decisions reviewer while retaining LLM/Jev. Egress and automatic allowance default off. See [configuration, safety boundaries, Desktop setup and test status](docs/luna-decisions.md). This branch has mock/library integration coverage; live Desktop/API verification is pending.
+
+
 0.6.2 fixed only the removal direction, and the live host immediately showed the
 other half: **an enable is an HMR transaction as well**, so the mount-time write
 that restores a missing preset was rejected with `HMR transactions cannot be

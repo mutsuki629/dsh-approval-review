@@ -165,11 +165,12 @@ export const JEV_MODEL_CHOICES: readonly string[] = [
  * @param llmChoices - the LLM routes and the route in force, as the card sees them.
  * @returns distinct candidates, Jev models first when they are permitted.
  */
-export function reviewerModelChoices(jevSelectable: boolean, llmChoices: readonly string[]): readonly string[] {
+export function reviewerModelChoices(jevSelectable: boolean, llmChoices: readonly string[], lunaSelectable = false): readonly string[] {
   const out: string[] = jevSelectable ? [...JEV_MODEL_CHOICES] : []
   const push = (value: string): void => {
     if (value.length > 0 && !out.includes(value)) out.push(value)
   }
+  if (lunaSelectable) push('openai-decisions/gpt-6-luna')
   for (const route of llmChoices) push(route)
   return out
 }

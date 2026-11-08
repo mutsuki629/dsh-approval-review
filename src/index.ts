@@ -65,7 +65,9 @@ export type { ConfigShape }
  * there would name a model that never sees the request.
  */
 function reviewerLabels(config: ConfigShape): { readonly provider: string; readonly model: string } {
-  return config.reviewer.engine === 'jev'
+  return config.reviewer.engine === 'luna'
+    ? { provider: 'openai-decisions', model: config.reviewer.luna.model }
+    : config.reviewer.engine === 'jev'
     ? { provider: 'typesafe', model: config.reviewer.jev.model }
     : { provider: config.reviewer.provider ?? '', model: config.reviewer.model ?? '' }
 }
@@ -129,6 +131,7 @@ function emptyView(config: ConfigShape): ReturnType<typeof auditView> {
       defaultReviewerModel: labels.model,
       defaultReviewerProvider: labels.provider,
       defaultReviewerEngine: config.reviewer.engine,
+      defaultLunaPermitted: config.reviewer.luna.allowEgress,
       defaultJevPermitted: config.reviewer.jev.allowEgress,
     },
   )
@@ -155,6 +158,10 @@ export function apply(ctx: Context, config: ConfigShape): void {
       + 'every review will report a missing credential and follow `onReviewerFailure`. Store the key through the '
       + 'harness credential settings (or `$DSH_HOME/.env`), then restart.',
     )
+  }
+  if (config.reviewer.engine === 'luna' && !process.env[config.reviewer.luna.apiKeyEnv]?.trim()
+    && readCredentialSeam(ctx.get('credentials')) === undefined) {
+    ctx.logger('dsh-approval-review').warn('Luna credential unavailable; store the credential through DSH settings. Reviews will delegate.')
   }
   const runtime = new ReviewRuntime(ctx, config)
 
@@ -272,7 +279,9 @@ export function apply(ctx: Context, config: ConfigShape): void {
           ].filter(note => note.length > 0).join(', ')
           // The EFFECTIVE engine: a session selection from the picker may have
           // switched it, and saying "llm" while Jev answers would be a lie.
-          const engine = view.reviewerEngine === 'jev'
+          const engine = view.reviewerEngine === 'luna'
+            ? `luna (${view.reviewerModel})`
+            : view.reviewerEngine === 'jev'
             ? `jev (${view.reviewerModel}${engineNote.length > 0 ? `, ${engineNote}` : ''})`
             : `llm${config.reviewer.mode === 'subagent' ? `/${config.reviewer.mode}` : ''}`
           const overrideNote = view.reviewerEngine === config.reviewer.engine

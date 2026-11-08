@@ -5,6 +5,7 @@
  * @module dsh-approval-review/config
  */
 
+import type { LunaConfig } from './luna-reviewer.ts'
 import Schema from '@deepseek-ai/schemastery'
 import type { RiskLevel, ToolPolicy } from './review-types.ts'
 import { RISK_LEVELS } from './review-types.ts'
@@ -50,7 +51,7 @@ export type ReviewerMode = 'subagent' | 'direct'
  * thresholds applied in code. The engine is chosen once per mount; the two never
  * mix, and every consumer downstream of the verdict is engine-agnostic.
  */
-export type ReviewerEngine = 'llm' | 'jev'
+export type ReviewerEngine = 'llm' | 'jev' | 'luna'
 
 /** TypeSafe (Jev) engine settings; inert unless `reviewer.engine: jev`. */
 export interface JevConfig {
@@ -82,6 +83,7 @@ export interface ReviewerConfig {
   /** Which engine answers: the LLM path or TypeSafe's Jev. */
   readonly engine: ReviewerEngine
   /** Jev settings; inert unless {@link engine} is `jev`. */
+  readonly luna: LunaConfig
   readonly jev: JevConfig
   /** `subagent` runs a read-only child; `direct` makes one plain model call. */
   readonly mode: ReviewerMode
@@ -252,7 +254,7 @@ export interface Config {
 }
 
 const REVIEWER_MODES: readonly ReviewerMode[] = ['subagent', 'direct']
-const REVIEWER_ENGINES: readonly ReviewerEngine[] = ['llm', 'jev']
+const REVIEWER_ENGINES: readonly ReviewerEngine[] = ['llm', 'jev', 'luna']
 
 /** The upstream endpoint, used when a deployment does not override it. */
 export const DEFAULT_JEV_ENDPOINT = 'https://api.typesafe.ai/v1/systemone'
@@ -264,7 +266,7 @@ const BUDGET_ACTIONS: readonly BudgetAction[] = ['delegate', 'deny']
 const CIRCUIT_ACTIONS: readonly CircuitAction[] = ['delegate', 'deny', 'stop']
 
 /** Schema for {@link Config}; the loader validates against this at mount time. */
-export const Config: Schema<Config> = Schema.object({
+const configSchema = Schema.object({
   enabled: Schema.boolean().default(true).description(
     'Master switch. When false the plugin registers nothing that claims a request.',
   ),
@@ -312,6 +314,17 @@ export const Config: Schema<Config> = Schema.object({
       + 'workspace; `direct` makes one plain model call with the evidence packet only. '
       + 'Applies to `engine: llm` only.',
     ),
+    luna: Schema.object({
+      endpoint: Schema.string().default('https://api.openai.com/v1/decisions').description('Official OpenAI Decisions endpoint; custom destinations are rejected.'),
+      model: Schema.string().default('gpt-6-luna').description('Official currently supported Decisions model.'),
+      apiKeyEnv: Schema.string().default('OPENAI_LUNA_DECISIONS_API_KEY').description('DSH credential reference, never a plaintext key.'),
+      timeoutMs: Schema.number().step(1).min(1000).max(60000).default(8000),
+      allowEgress: Schema.boolean().default(false).description('Explicitly permit bounded action evidence to OpenAI.'),
+      autoAllow: Schema.boolean().default(false).description('Enable only after evaluating labeled cases; otherwise allow candidates delegate.'),
+      allowProbabilityMin: Schema.number().min(0.9).max(1).default(0.99),
+      classificationProbabilityMin: Schema.number().min(0.9).max(1).default(0.99),
+      prohibitionProbabilityMax: Schema.number().min(0).max(0.01).default(0.001),
+    }).default({}),
     jev: Schema.object({
       endpoint: Schema.string().default(DEFAULT_JEV_ENDPOINT)
         .description('System One evaluation endpoint. Evidence is POSTed here, so a deployment may '
@@ -453,6 +466,10 @@ export const Config: Schema<Config> = Schema.object({
       + 'never rewritten.'),
 })
 
+// All fields are plain (none use volatile). Schemastery 3.19 widens child Mode
+// through default()/description(); retain the public schema type and runtime validation.
+export const Config = configSchema as Schema<Config>
+
 /**
  * Translate one glob-ish tool pattern into a regular expression. `*` matches any
  * run of characters; every other character is literal, so a tool name containing
@@ -586,6 +603,15 @@ export interface ReviewerEngineProblems {
 export function validateReviewerEngine(config: Config): ReviewerEngineProblems {
   const errors: string[] = []
   const warnings: string[] = []
+  if (config.reviewer.engine === 'luna') {
+    const luna = config.reviewer.luna
+    if (!luna.allowEgress) errors.push('reviewer.luna.allowEgress must acknowledge evidence transmission to OpenAI')
+    if (luna.endpoint !== 'https://api.openai.com/v1/decisions') errors.push('reviewer.luna.endpoint must be the official OpenAI Decisions URL')
+    if (luna.model !== 'gpt-6-luna') errors.push('reviewer.luna.model is not supported by official Decisions API')
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(luna.apiKeyEnv)) errors.push('reviewer.luna.apiKeyEnv must be a credential reference')
+    if (config.reviewer.mode !== 'direct') errors.push('Luna requires reviewer.mode: direct')
+    return { errors, warnings }
+  }
   if (config.reviewer.engine !== 'jev') return { errors, warnings }
   const jev = config.reviewer.jev
 

@@ -156,12 +156,13 @@ export interface AuditView {
    * the session selected a reviewer from the other engine through the picker.
    * This is what the header pill shows and what the runtime dispatches on.
    */
-  readonly reviewerEngine: 'llm' | 'jev'
+  readonly reviewerEngine: 'llm' | 'jev' | 'luna'
   /**
    * Whether the picker may offer Jev models at all: the deployment acknowledged
    * that evidence leaves the machine (`reviewer.jev.allowEgress`). A session
    * selection can never grant this itself.
    */
+  readonly lunaSelectable?: boolean
   readonly jevSelectable: boolean
 }
 
@@ -191,7 +192,7 @@ export interface AuditState {
    * to switch which engine answers; a bare model id leaves this unset and keeps the
    * deployment's engine.
    */
-  readonly engineOverride?: 'llm' | 'jev'
+  readonly engineOverride?: 'llm' | 'jev' | 'luna'
   readonly reviewsThisTurn: number
   readonly denialsStreak: number
   readonly window: readonly boolean[]
@@ -351,7 +352,7 @@ export function applyAuditEvent(
             // selection, anything else is an LLM route. That is what lets one
             // picker row mean something under either deployment engine, instead
             // of being listed and then discarded by the engine in force.
-            engineOverride: provider === JEV_ROUTE_PROVIDER ? 'jev' : 'llm',
+            engineOverride: provider === 'openai-decisions' ? 'luna' : provider === JEV_ROUTE_PROVIDER ? 'jev' : 'llm',
             providerOverride: provider,
             modelOverride: value.slice(slash + 1),
           }
@@ -409,8 +410,9 @@ export function auditView(
     /** Deployment default provider half; `''` inherits the calling agent's. */
     readonly defaultReviewerProvider: string
     /** Engine the deployment selected; not influenced by any session override. */
-    readonly defaultReviewerEngine: 'llm' | 'jev'
+    readonly defaultReviewerEngine: 'llm' | 'jev' | 'luna'
     /** `reviewer.jev.allowEgress`: whether a session may switch to Jev at all. */
+    readonly defaultLunaPermitted?: boolean
     readonly defaultJevPermitted: boolean
   },
 ): AuditView {
@@ -424,6 +426,7 @@ export function auditView(
     ...state.modelOverride === undefined ? {} : { overrideModel: state.modelOverride },
     defaultProvider: defaults.defaultReviewerProvider,
     defaultModel: defaults.defaultReviewerModel,
+    lunaPermitted: defaults.defaultLunaPermitted === true,
     jevPermitted: defaults.defaultJevPermitted,
   })
   return {
@@ -439,6 +442,7 @@ export function auditView(
     reviewerModel: identity.model,
     reviewerProvider: identity.provider,
     reviewerEngine: identity.engine,
+    lunaSelectable: defaults.defaultLunaPermitted === true,
     jevSelectable: defaults.defaultJevPermitted,
   }
 }
@@ -610,8 +614,9 @@ export function createAuditProjection(defaults: AuditFoldDefaults & {
   readonly breakerTrips: (state: AuditState) => boolean
   readonly defaultReviewerModel: string
   readonly defaultReviewerProvider: string
-  readonly defaultReviewerEngine: 'llm' | 'jev'
-  readonly defaultJevPermitted: boolean
+  readonly defaultReviewerEngine: 'llm' | 'jev' | 'luna'
+  readonly defaultLunaPermitted?: boolean
+    readonly defaultJevPermitted: boolean
 }): WiredProjectionDefinition<AuditProjectionKey> {
   const stateSchema = z.object({
     records: z.array(z.any()),
@@ -646,6 +651,7 @@ export function createAuditProjection(defaults: AuditFoldDefaults & {
         defaultReviewerModel: defaults.defaultReviewerModel,
         defaultReviewerProvider: defaults.defaultReviewerProvider,
         defaultReviewerEngine: defaults.defaultReviewerEngine,
+        defaultLunaPermitted: defaults.defaultLunaPermitted === true,
         defaultJevPermitted: defaults.defaultJevPermitted,
       }),
     },
