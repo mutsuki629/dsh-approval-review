@@ -55,11 +55,12 @@ export interface ClientAuditView {
    * selection from the picker switched it. Absent on an older host, which this
    * client reads as `llm`.
    */
-  readonly reviewerEngine?: 'llm' | 'jev'
+  readonly reviewerEngine?: 'llm' | 'jev' | 'luna'
   /**
    * Whether the picker may offer Jev models at all — the deployment acknowledged
    * that evidence leaves the machine. This is not engine-dependent: choosing a Jev
    * row is exactly how a session switches to Jev.
    */
+  readonly lunaSelectable?: boolean
   readonly jevSelectable?: boolean
 }

@@ -27,7 +27,7 @@
  */
 
 /** Which engine answers reviews. Mirrors `reviewer.engine` without importing config. */
-export type ReviewerEngineName = 'llm' | 'jev'
+export type ReviewerEngineName = 'llm' | 'jev' | 'luna'
 
 /** The provider half that marks the Jev engine in a selection. */
 export const JEV_ROUTE_PROVIDER = 'typesafe'
@@ -71,6 +71,7 @@ export function effectiveReviewerModel(input: {
   /** Deployment default model for the deployment engine. */
   readonly defaultModel: string
   /** `reviewer.jev.allowEgress`: the deployment's consent to send evidence out. */
+  readonly lunaPermitted?: boolean
   readonly jevPermitted: boolean
 }): ReviewerIdentity {
   const provider = present(input.overrideProvider)
@@ -87,7 +88,15 @@ export function effectiveReviewerModel(input: {
     return { ...defaults, rejectedOverride: `${JEV_ROUTE_PROVIDER}/${model ?? ''}` }
   }
 
+  if (input.overrideEngine === 'luna' && input.lunaPermitted !== true) {
+    return { ...defaults, rejectedOverride: `openai-decisions/${model ?? ''}` }
+  }
   const engine = input.overrideEngine ?? input.engine
+  if (engine === 'luna') {
+    const bare = model ?? (input.engine === 'luna' ? input.defaultModel : 'gpt-6-luna')
+    if (bare !== 'gpt-6-luna') return { ...defaults, rejectedOverride: bare }
+    return { engine: 'luna', provider: 'openai-decisions', model: bare }
+  }
   if (engine === 'jev') {
     // A selection that names the Jev engine must name a model with it; a bare id
     // under the deployment's own Jev engine falls back to the configured model.

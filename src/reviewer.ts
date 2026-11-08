@@ -404,7 +404,7 @@ export function buildReviewerUserMessage(evidence: ReviewEvidence): Message {
   ]
   return createUserMessage({
     content: [{ type: 'text', text: body.join('\n') }],
-    source: { kind: 'plugin', plugin: 'dsh-approval-review' },
+    source: { kind: 'approval-review' },
   })
 }
 
@@ -663,4 +663,10 @@ function blocksToText(blocks: readonly ContentBlock[]): string {
     .filter((block): block is Extract<ContentBlock, { type: 'text' }> => block.type === 'text')
     .map(block => block.text)
     .join('\n')
+}
+
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'approval-review': { readonly kind: 'approval-review' }
+  }
 }

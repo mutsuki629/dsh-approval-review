@@ -489,3 +489,14 @@ it('records an exact-action approval only when carried by its review marker', ()
   const parsed = parseReviewMarker(formatReviewMarker({ reason: 'exact retry', overridden: true }))
   expect(parsed?.overridden).toBe(true)
 })
+
+
+it('replays Luna reviewer selection through the existing Approvals projection', () => {
+  const state=fold([event('command/run',{commandId:'luna',name:COMMAND_NAME,args:'model openai-decisions/gpt-6-luna',source:'user'})])
+  const defaults={enabledByDefault:true,maxReviewsPerTurn:20,breakerTrips:false,defaultReviewerEngine:'llm' as const,
+    defaultReviewerModel:'base',defaultReviewerProvider:'test',defaultJevPermitted:false}
+  expect(auditView(state,{...defaults,defaultLunaPermitted:true})).toMatchObject({reviewerEngine:'luna',reviewerModel:'gpt-6-luna',lunaSelectable:true})
+  expect(auditView(state,{...defaults,defaultLunaPermitted:false}).reviewerEngine).toBe('llm')
+  const marker=formatReviewMarker({reason:'Luna delegate: policy review required',reviewerRoute:'openai-decisions/gpt-6-luna',durationMs:42,uncertain:true})
+  expect(parseReviewMarker(marker)).toMatchObject({reason:'Luna delegate: policy review required',reviewerRoute:'openai-decisions/gpt-6-luna',durationMs:42,uncertain:true})
+})

@@ -7,7 +7,7 @@
  * @module dsh-approval-review/tests/integration
  */
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { LlmAdapter, LlmRuntime, ToolCallId } from '@deepseek-ai/dsh-llm'
@@ -74,6 +74,23 @@ function fakeAgent(seed: Array<{ type: string; data?: Record<string, unknown> }>
   return { agent, appended, events }
 }
 
+/** Newer DSH approval owns a projection. Fold its real unit over the fake session log. */
+async function mountApproval(ctx: Context): Promise<void> {
+  ctx.provide('sessionProjections', {
+    snapshot: () => ({ values: {} }),
+    register: (unit: any) => ({
+      stateOf: (session: any) => {
+        let state = unit.init(session.header, 0)
+        for (let i=0;i<session.seq;i++) state=unit.apply(state,session.eventAt(i))
+        return state
+      },
+      dispose: async () => {},
+    }),
+  } as never)
+  await ctx.plugin(ApprovalService)
+  await new Promise(resolve => setTimeout(resolve, 0))
+}
+
 /** Mount the approval seam, the LLM runtime, and the plugin under test. */
 async function mounted(overrides: Record<string, unknown> = {}): Promise<{
   ctx: Context
@@ -81,7 +98,7 @@ async function mounted(overrides: Record<string, unknown> = {}): Promise<{
   config: ConfigShape
 }> {
   const ctx = new Context()
-  await ctx.plugin(ApprovalService)
+  await mountApproval(ctx)
   await ctx.plugin(CommandRuntime)
   const reviewer = new ScriptedReviewer()
   const llm = new LlmRuntime(ctx)
@@ -436,7 +453,7 @@ describe('approval audit trail', () => {
 
   it('delegates instead of crashing when no reviewer route can be resolved', async () => {
     const ctx = new Context()
-    await ctx.plugin(ApprovalService)
+    await mountApproval(ctx)
     await ctx.plugin(CommandRuntime)
     const reviewer = new ScriptedReviewer()
     new LlmRuntime(ctx).registerAdapter(['test'], reviewer)
@@ -774,7 +791,7 @@ describe('reviewer failure budget', () => {
     // the reviewer cannot run — and with `onReviewerFailure: rejected` the
     // deployment refuses rather than asking.
     const ctx = new Context()
-    await ctx.plugin(ApprovalService)
+    await mountApproval(ctx)
     await ctx.plugin(CommandRuntime)
     const reviewer = new ScriptedReviewer()
     new LlmRuntime(ctx).registerAdapter(['test'], reviewer)
@@ -846,5 +863,51 @@ describe('stop-on-rejection breaker', () => {
     expect(cancellations).toHaveLength(0)
     emitSessionEvent(ctx, agent.session, { type: 'tool/result', data: { message: { content: [{ type: 'tool-result', toolCallId: 'c', content: [{ type: 'text', text: 'refused' }] }] } } })
     expect(cancellations).toEqual([{ cause: { kind: 'hook', reason: 'approval reviewer rejection circuit breaker' }, options: { keepInbox: true } }])
+  })
+})
+
+
+describe('Luna through the real DSH approval seam (mock HTTP)', () => {
+  async function lunaMount(extra: Record<string, unknown> = {}) {
+    return mounted({ ...extra, reviewer: { engine: 'luna', luna: { allowEgress: true, autoAllow: true,
+      apiKeyEnv: 'LUNA_TEST_ONLY_KEY' } } })
+  }
+  function mockLuna() {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+      const body = JSON.parse(String(init?.body))
+      const selected: Record<string,string> = {permit_decision:'permit',intrinsic_risk:'low',user_authorization:'high'}
+      return Response.json({model: 'gpt-6-luna',answers: body.questions.map((q: {name:string;type:string;choices?:Array<{value:string}>}) =>
+        q.type === 'predicate' ? {type:q.type,name:q.name,probability:q.name==='scope_bounded'?1:0}
+          : {type:q.type,name:q.name,choice:selected[q.name],confidence:1,
+            probabilities:q.choices!.map(c=>({value:c.value,probability:c.value===selected[q.name]?1:0}))})})
+    })
+  }
+  it('dispatches Luna, records model and reason, preserves budgets and local safety', async () => {
+    process.env.LUNA_TEST_ONLY_KEY='mock-only'
+    const http=mockLuna()
+    try {
+      const {ctx,reviewer}=await lunaMount({budget:{maxReviewsPerTurn:1,onExhausted:'delegate'}})
+      const {agent}=fakeAgent(withToolCall(fakeAgent().agent,'c','read','{"path":"README.md"}'))
+      expect(await ctx.approval.request(requestOf(agent,'read','c'))).toBe('allowed-once')
+      const runtime = new ReviewRuntime(ctx, (Config as unknown as (x:unknown)=>ConfigShape)({reviewer:{engine:'luna',luna:{allowEgress:true}}}))
+      expect(runtime.liveView(agent.session)).toMatchObject({reviewerEngine:'luna',reviewerProvider:'openai-decisions',lunaSelectable:true})
+      expect(http).toHaveBeenCalledTimes(1);expect(reviewer.calls).toHaveLength(0)
+      seed(agent,'tool/call',{turn:1,step:0,callId:'c2',name:'read',arguments:'{"path":"README.md"}'})
+      expect(await ctx.approval.request(requestOf(agent,'read','c2'))).toBe('unavailable')
+      expect(http).toHaveBeenCalledTimes(1)
+      expect(await runtime.answer(requestOf(agent,'read','c'),async()=>'unavailable')).toBe('unavailable') // default autoAllow=false
+    } finally {http.mockRestore();delete process.env.LUNA_TEST_ONLY_KEY}
+  })
+  it('ignores legacy fail-open failure and uncertainty configuration for Luna', async()=>{
+    process.env.LUNA_TEST_ONLY_KEY='mock-only'
+    const http=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response('never logged',{status:401}))
+    try {
+      const {ctx}=await lunaMount({onReviewerFailure:'allow-once',onUncertain:'allow'})
+      const {agent}=fakeAgent(withToolCall(fakeAgent().agent,'c','read','{"path":"README.md"}'))
+      expect(await ctx.approval.request(requestOf(agent,'read','c'))).toBe('unavailable')
+      seed(agent,'tool/call',{turn:1,step:0,callId:'c2',name:'bash',arguments:'{"command":"rm -rf /"}'})
+      expect(await ctx.approval.request(requestOf(agent,'bash','c2'))).toBe('unavailable')
+      expect(http).toHaveBeenCalledTimes(1)
+    }finally{http.mockRestore();delete process.env.LUNA_TEST_ONLY_KEY}
   })
 })

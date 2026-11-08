@@ -1,8 +1,8 @@
 import Schema from "@deepseek-ai/schemastery";
+import "@deepseek-ai/dsh-llm";
 import { Context } from "@deepseek-ai/cordis";
 import "@deepseek-ai/dsh-session";
 import "@deepseek-ai/dsh-session-projection";
-//#region src/review-types.d.ts
 /**
  * Domain vocabulary for the approval-review capability: how an approval request
  * is classified, what the reviewer answered, and the record that the audit card
@@ -23,8 +23,25 @@ type ToolPolicy = 'ai' | 'human' | 'never';
 /** Risk grades a reviewer may report, ordered from least to most dangerous. */
 type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
 type UserAuthorization = 'high' | 'medium' | 'low' | 'unknown';
-//#endregion
-//#region src/config.d.ts
+declare module '@deepseek-ai/dsh-llm' {
+  interface MessageSourceMap {
+    'approval-review': {
+      readonly kind: 'approval-review';
+    };
+  }
+}
+interface LunaConfig {
+  readonly endpoint: string;
+  readonly model: string;
+  readonly apiKeyEnv: string;
+  readonly timeoutMs: number;
+  readonly allowEgress: boolean;
+  /** Deliberately opt-in: thresholds require deployment-specific evaluation. */
+  readonly autoAllow: boolean;
+  readonly allowProbabilityMin: number;
+  readonly classificationProbabilityMin: number;
+  readonly prohibitionProbabilityMax: number;
+}
 /** How the plugin reacts to a reviewer verdict that exceeds the risk threshold. */
 type RiskGateAction = 'allow' | 'delegate' | 'deny';
 /** How the plugin reacts when the reviewer cannot decide. */
@@ -58,7 +75,7 @@ type ReviewerMode = 'subagent' | 'direct';
  * thresholds applied in code. The engine is chosen once per mount; the two never
  * mix, and every consumer downstream of the verdict is engine-agnostic.
  */
-type ReviewerEngine = 'llm' | 'jev';
+type ReviewerEngine = 'llm' | 'jev' | 'luna';
 /** TypeSafe (Jev) engine settings; inert unless `reviewer.engine: jev`. */
 interface JevConfig {
   /** Full URL of the System One evaluation endpoint. */
@@ -88,6 +105,7 @@ interface ReviewerConfig {
   /** Which engine answers: the LLM path or TypeSafe's Jev. */
   readonly engine: ReviewerEngine;
   /** Jev settings; inert unless {@link engine} is `jev`. */
+  readonly luna: LunaConfig;
   readonly jev: JevConfig;
   /** `subagent` runs a read-only child; `direct` makes one plain model call. */
   readonly mode: ReviewerMode;
@@ -250,10 +268,7 @@ interface Config {
    */
   readonly language: 'auto' | 'en' | 'zh';
 }
-/** Schema for {@link Config}; the loader validates against this at mount time. */
 declare const Config: Schema<Config>;
-//#endregion
-//#region src/audit.d.ts
 /** One rendered audit entry. Every field is plain JSON. */
 interface AuditRecord {
   /** Fresh id minted when the request was reviewed. */
@@ -334,12 +349,13 @@ interface AuditView {
    * the session selected a reviewer from the other engine through the picker.
    * This is what the header pill shows and what the runtime dispatches on.
    */
-  readonly reviewerEngine: 'llm' | 'jev';
+  readonly reviewerEngine: 'llm' | 'jev' | 'luna';
   /**
    * Whether the picker may offer Jev models at all: the deployment acknowledged
    * that evidence leaves the machine (`reviewer.jev.allowEgress`). A session
    * selection can never grant this itself.
    */
+  readonly lunaSelectable?: boolean;
   readonly jevSelectable: boolean;
 }
 /** Raw projection state; the wire view is derived from it. */
@@ -368,7 +384,7 @@ interface AuditState {
    * to switch which engine answers; a bare model id leaves this unset and keeps the
    * deployment's engine.
    */
-  readonly engineOverride?: 'llm' | 'jev';
+  readonly engineOverride?: 'llm' | 'jev' | 'luna';
   readonly reviewsThisTurn: number;
   readonly denialsStreak: number;
   readonly window: readonly boolean[];
@@ -396,12 +412,11 @@ declare function auditView(state: AuditState, defaults: {
   /** Deployment default provider half; `''` inherits the calling agent's. */
   readonly defaultReviewerProvider: string;
   /** Engine the deployment selected; not influenced by any session override. */
-  readonly defaultReviewerEngine: 'llm' | 'jev';
+  readonly defaultReviewerEngine: 'llm' | 'jev' | 'luna';
   /** `reviewer.jev.allowEgress`: whether a session may switch to Jev at all. */
+  readonly defaultLunaPermitted?: boolean;
   readonly defaultJevPermitted: boolean;
 }): AuditView;
-//#endregion
-//#region src/output-language.d.ts
 /** A language this plugin can emit prose in. */
 type OutputLanguage = 'en' | 'zh';
 /** The `language` setting: an explicit language, or follow the harness. */
@@ -416,8 +431,6 @@ type LanguageSetting = OutputLanguage | 'auto';
 declare function outputIsZh(ctx: Context, config: {
   readonly language: LanguageSetting;
 }): boolean;
-//#endregion
-//#region src/index.d.ts
 declare const name = "approval-review";
 /**
  * Consumers: the `/approval-review` command and the LLM seam the reviewer calls.
@@ -429,5 +442,4 @@ declare const inject: string[];
 declare function emptyView(config: Config): ReturnType<typeof auditView>;
 /** Register the answerer, the rationale carrier, the command, and the card feed. */
 declare function apply(ctx: Context, config: Config): void;
-//#endregion
 export { Config, type Config as ConfigShape, apply, emptyView, inject, name, outputIsZh };

@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 /**
  * The access-mode entry's two guards.
  *
@@ -28,6 +29,7 @@ import {
   PACKAGE_NAME,
   PERMISSION_PRESETS_PACKAGE,
   SHIPPED_PRESET,
+  LEGACY_SHIPPED_PRESET,
   SHIPPED_PRESET_KEY,
   describeAccessMode,
   type ConfigEditorLike,
@@ -211,18 +213,8 @@ function presetsOfConfig(config: Record<string, unknown>): Record<string, unknow
 }
 
 describe('shipped preset definition', () => {
-  it('matches the bundle patch this package ships', async () => {
-    const text = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-    const entry = new RegExp(
-      `${SHIPPED_PRESET_KEY}:\\s*\\n\\s*sandbox:\\s*(\\S+)\\s*\\n\\s*approval:\\s*(\\S+)\\s*\\n`
-      + '\\s*name:\\s*(\\S+)\\s*\\n\\s*description:\\s*(.+)',
-      'u',
-    ).exec(text)
-    expect(entry, 'cordis.patch.yml no longer declares the preset this package owns').not.toBeNull()
-    expect(entry?.[1]).toBe(SHIPPED_PRESET.sandbox)
-    expect(entry?.[2]).toBe(SHIPPED_PRESET.approval)
-    expect(entry?.[3]).toBe(SHIPPED_PRESET.name)
-    expect(entry?.[4]?.trim()).toBe(SHIPPED_PRESET.description)
+  it('keeps managed Auto inside workspace-write and interactive approval boundaries', () => {
+    expect(SHIPPED_PRESET).toMatchObject({sandbox:'workspace-write',approval:'ask'})
   })
 
   it('is the gate key and management default the schema ships', () => {
@@ -565,5 +557,42 @@ describe('status line', () => {
     expect(describeAccessMode({ kind: 'failed', detail: 'boom' }, SHIPPED_PRESET_KEY, true)).toContain('boom')
     expect(describeAccessMode({ kind: 'any-mode' }, '', true)).toContain('任意模式')
     expect(describeAccessMode({ kind: 'service-missing' }, SHIPPED_PRESET_KEY, false)).toContain('permissionPresets')
+  })
+})
+
+
+it('does not ship a replacement host permission table', () => {
+  const patch=readFileSync(new URL('../cordis.patch.yml', import.meta.url),'utf8')
+  expect(patch).not.toMatch(/^- id: permission\s*$/mu)
+  expect(patch).toMatch(/manageAccessModePreset: true/u)
+})
+
+
+describe('English fallback for the managed Auto label', () => {
+  it('migrates only the exact previous shipped definition and preserves other presets', async () => {
+    const old={presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...LEGACY_SHIPPED_PRESET}}}
+    const editor=fakeEditor({inherited:old,override:old})
+    const {owner}=await mounted({presets:fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]),editor})
+    expect(editor.calls).toHaveLength(1)
+    expect(editor.config()).toEqual({presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...SHIPPED_PRESET}}})
+    // The host publishes the persisted override on the next configuration pass.
+    editor.setOverride(editor.config())
+    await owner.attach(fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]))
+    expect(owner.state()).toEqual({kind:'adopted'})
+    expect(editor.calls).toHaveLength(1)
+  })
+  it('preserves user-customized labels', async () => {
+    const custom={presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...LEGACY_SHIPPED_PRESET,name:'My reviewer'}}}
+    const editor=fakeEditor({inherited:custom,override:custom})
+    await mounted({presets:fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]),editor})
+    expect(editor.calls).toHaveLength(0)
+    expect(editor.config()).toEqual(custom)
+  })
+  it('leaves unmanaged configuration untouched', async () => {
+    const old={presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...LEGACY_SHIPPED_PRESET}}}
+    const editor=fakeEditor({inherited:old,override:old})
+    await mounted({presets:fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]),editor,config:{manageAccessModePreset:false}})
+    expect(editor.calls).toHaveLength(0)
+    expect(editor.config()).toEqual(old)
   })
 })
