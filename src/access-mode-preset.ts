@@ -140,10 +140,9 @@ export interface HmrLike {
 /**
  * The preset this package owns.
  *
- * MUST stay byte-identical to the `approve-for-me` entry in this package's
- * `cordis.patch.yml`: that patch is what a deployment without a competing
- * override gets, and it is what the managed write reproduces. A test pins the
- * two together, so drift fails the build instead of shipping.
+ * Installed through the preset owner, without replacing the host's own table.
+ * This static host configuration has no locale seat, so use English as fallback.
+ * Only the exact old shipped Chinese definition is migrated on upgrades.
  *
  * The knobs deliberately match `workspace-write`: the difference is WHO answers
  * an approval (this plugin's reviewer instead of a human prompt), not how far
@@ -152,6 +151,14 @@ export interface HmrLike {
  * what the agent is allowed to attempt.
  */
 export const SHIPPED_PRESET = {
+  sandbox: 'workspace-write',
+  approval: 'ask',
+  name: 'Auto approval',
+  description: 'Workspace-write boundaries with an independent approval reviewer. Risky or uncertain actions go to you.',
+} as const
+
+/** Exact historical package-owned copy; custom definitions must never migrate. */
+export const LEGACY_SHIPPED_PRESET = {
   sandbox: 'workspace-write',
   approval: 'ask',
   name: '替我审批',
@@ -334,6 +341,19 @@ export class AccessModePreset {
       return
     }
     const editor = this.editor()
+    if (editor !== undefined && this.config.manageAccessModePreset
+      && isDeepStrictEqual(presetsOf(this.configurationRow(editor)?.override)[key], { ...LEGACY_SHIPPED_PRESET })) {
+      const entry = this.permissionEntry(editor)
+      if (entry !== undefined) {
+        const written = await this.writeWithRetries(editor, entry, current => {
+          const presets = presetsOf(current)
+          if (!isDeepStrictEqual(presets[key], { ...LEGACY_SHIPPED_PRESET })) return current
+          return { ...current, presets: { ...presets, [key]: { ...SHIPPED_PRESET } } }
+        })
+        if (!written) { this.fail('could not migrate the legacy access-mode label', this.lastError); return }
+        if (this.stopped) return
+      }
+    }
     // An identical entry in the profile patch is adopted even when the catalog
     // already shows the key: that entry is the one a human pasted there, and it
     // is the one that would otherwise outlive an uninstall.

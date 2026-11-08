@@ -29,6 +29,7 @@ import {
   PACKAGE_NAME,
   PERMISSION_PRESETS_PACKAGE,
   SHIPPED_PRESET,
+  LEGACY_SHIPPED_PRESET,
   SHIPPED_PRESET_KEY,
   describeAccessMode,
   type ConfigEditorLike,
@@ -564,4 +565,34 @@ it('does not ship a replacement host permission table', () => {
   const patch=readFileSync(new URL('../cordis.patch.yml', import.meta.url),'utf8')
   expect(patch).not.toMatch(/^- id: permission\s*$/mu)
   expect(patch).toMatch(/manageAccessModePreset: true/u)
+})
+
+
+describe('English fallback for the managed Auto label', () => {
+  it('migrates only the exact previous shipped definition and preserves other presets', async () => {
+    const old={presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...LEGACY_SHIPPED_PRESET}}}
+    const editor=fakeEditor({inherited:old,override:old})
+    const {owner}=await mounted({presets:fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]),editor})
+    expect(editor.calls).toHaveLength(1)
+    expect(editor.config()).toEqual({presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...SHIPPED_PRESET}}})
+    // The host publishes the persisted override on the next configuration pass.
+    editor.setOverride(editor.config())
+    await owner.attach(fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]))
+    expect(owner.state()).toEqual({kind:'adopted'})
+    expect(editor.calls).toHaveLength(1)
+  })
+  it('preserves user-customized labels', async () => {
+    const custom={presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...LEGACY_SHIPPED_PRESET,name:'My reviewer'}}}
+    const editor=fakeEditor({inherited:custom,override:custom})
+    await mounted({presets:fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]),editor})
+    expect(editor.calls).toHaveLength(0)
+    expect(editor.config()).toEqual(custom)
+  })
+  it('leaves unmanaged configuration untouched', async () => {
+    const old={presets:{...BASE_PRESETS,[SHIPPED_PRESET_KEY]:{...LEGACY_SHIPPED_PRESET}}}
+    const editor=fakeEditor({inherited:old,override:old})
+    await mounted({presets:fakeCatalog([...BASE_KEYS,SHIPPED_PRESET_KEY]),editor,config:{manageAccessModePreset:false}})
+    expect(editor.calls).toHaveLength(0)
+    expect(editor.config()).toEqual(old)
+  })
 })
