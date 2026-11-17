@@ -26,7 +26,7 @@ type UserAuthorization = 'high' | 'medium' | 'low' | 'unknown';
 declare module '@deepseek-ai/dsh-llm' {
   interface MessageSourceMap {
     'approval-review': {
-      readonly kind: 'approval-review';
+      kind: 'approval-review';
     };
   }
 }

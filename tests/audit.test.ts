@@ -500,3 +500,22 @@ it('replays Luna reviewer selection through the existing Approvals projection', 
   const marker=formatReviewMarker({reason:'Luna delegate: policy review required',reviewerRoute:'openai-decisions/gpt-6-luna',durationMs:42,uncertain:true})
   expect(parseReviewMarker(marker)).toMatchObject({reason:'Luna delegate: policy review required',reviewerRoute:'openai-decisions/gpt-6-luna',durationMs:42,uncertain:true})
 })
+
+it.each(['allowed-once', 'rejected'])('retains Luna handoff rationale after a human %s result in the current host format', outcome => {
+  const state = fold([
+    event('turn/start', { turn: 1 }),
+    event('approval/asked', { id: 'luna-handoff', callId: 'read-1', toolName: 'read' }),
+    event('approval/decided', { id: 'luna-handoff', outcome }),
+    event('tool/result', { message: {
+      role: 'tool', source: { kind: 'tool', callId: 'read-1' }, toolCallId: 'read-1',
+      content: [{ type: 'text', text: formatReviewMarker({
+        reason: 'Luna delegate: policy review required', reviewerRoute: 'openai-decisions/gpt-6-luna',
+        durationMs: 42, uncertain: true,
+      }) }],
+    } }),
+  ])
+  expect(state.records[0]).toMatchObject({
+    outcome, reason: 'Luna delegate: policy review required',
+    reviewerRoute: 'openai-decisions/gpt-6-luna', durationMs: 42, uncertain: true,
+  })
+})

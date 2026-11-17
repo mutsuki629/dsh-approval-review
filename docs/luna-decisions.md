@@ -96,3 +96,11 @@ Official 0.2.2 packages moved tool results from nested `tool-result` blocks to t
 ### Static preset label correction (2026-11-09)
 
 The managed Auto preset previously had hard-coded Chinese name/description, outside the client locale dictionary. It now uses English `Auto approval` and an English description. The ledger still supports English/Chinese and has no Japanese translation; this is a static English fallback, not full Japanese localization. Only an exact match to the historical shipped preset is migrated, with management enabled. Customized or unmanaged definitions are preserved. Sandbox/approval values, other presets, reviewer routes and credentials are unchanged. Neo Desktop visually verified Japanese host modes alongside the English Auto label. Typecheck/build and 447 tests pass (4 paid tests skipped); three new tests cover migration, custom labels and unmanaged configuration. No paid requests were made for this UI change.
+
+
+### Upstream integration (2026-11-17)
+
+`0.6.6-mu.1` integrates upstream 0.6.6 without changing Luna's API or credential
+contract. The modern child activation and provenance-checked transcript helpers
+replace the earlier compatibility shims. See [integration verification and rollout](upstream-0.6.6.md).
+The 0.6.4-mu.4 Desktop observations above remain a historical validation snapshot.

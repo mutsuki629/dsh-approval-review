@@ -1,4 +1,3 @@
-import { compatibleTexts, compatibleCallId } from './message-compat.ts'
 /**
  * The audit ledger and its session projection — the data source for the review
  * card page.
@@ -21,7 +20,7 @@ import { compatibleTexts, compatibleCallId } from './message-compat.ts'
 
 import { z } from 'zod'
 import type { SessionEvent, SessionHeader, SessionLogOffset } from '@deepseek-ai/dsh-session'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { contentTexts, toolResultCallId } from './transcript-compat.ts'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-projection/types'
 // Type-only: bring the `command/run` session-event declaration into scope so the
@@ -370,9 +369,9 @@ export function applyAuditEvent(
     case 'tool/result': {
       // The refusal marker is where the reviewer's rationale survives. Fold it
       // back onto the matching record so the card can show WHY, not just that.
-      const callId = callIdOfToolResult(event)
+      const callId = toolResultCallId(event.data.message)
       if (callId === undefined) return state
-      const marker = toolResultTexts(event).find(text => text.includes(REVIEW_MARKER))
+      const marker = contentTexts(event.data.message.content).find(text => text.includes(REVIEW_MARKER))
       if (marker === undefined) return state
       const parsed = parseReviewMarker(marker)
       if (parsed === undefined) return state
@@ -456,11 +455,6 @@ function cap(records: readonly AuditRecord[]): readonly AuditRecord[] {
   return records.length <= MAX_RECORDS ? records : records.slice(0, MAX_RECORDS)
 }
 
-/** Every text block inside a tool result, including nested ones. */
-function toolResultTexts(event: Extract<SessionEvent, { type: 'tool/result' }>): string[] {
-  return compatibleTexts(event.data.message.content)
-}
-
 /** Bound and normalize one raw argument string for the preview. */
 function previewArguments(raw: string): string | undefined {
   if (raw.length === 0) return undefined
@@ -468,16 +462,6 @@ function previewArguments(raw: string): string | undefined {
   return trimmed.length <= ARGUMENT_PREVIEW_MAX
     ? trimmed
     : `${trimmed.slice(0, ARGUMENT_PREVIEW_MAX)}…`
-}
-
-/**
- * Recover the callId a `tool/result` belongs to. The event carries the tool
- * result message, whose block identifies the call.
- * @param event - a committed `tool/result` event.
- * @returns the call id, when the message shape exposes one.
- */
-function callIdOfToolResult(event: Extract<SessionEvent, { type: 'tool/result' }>): string | undefined {
-  return compatibleCallId(event.data.message)
 }
 
 /** Fields recovered out of a refusal marker. */

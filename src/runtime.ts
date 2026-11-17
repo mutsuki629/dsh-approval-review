@@ -1,4 +1,3 @@
-import { compatibleTexts, compatibleCallId } from './message-compat.ts'
 /**
  * The approval-review answerer: the host half that decides one `approval/request`
  * with a second model, feeds its rationale back to the calling model, and keeps
@@ -17,7 +16,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { ApprovalOutcome } from '@deepseek-ai/dsh-user-approval/types'
 import type { ApprovalRequestEvent } from '@deepseek-ai/dsh-user-approval/types'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { contentTexts, toolResultCallId } from './transcript-compat.ts'
 import {
   applyVerdictGates,
   resolveToolPolicy,
@@ -299,7 +298,7 @@ export class ReviewRuntime {
    */
   observeEvent(session: Session, event: SessionEvent): void {
     const stop = this.pendingStops.get(session)
-    if (stop !== undefined && event.type === 'tool/result' && compatibleCallId(event.data.message) === stop.callId) {
+    if (stop !== undefined && event.type === 'tool/result' && toolResultCallId(event.data.message) === stop.callId) {
       this.pendingStops.delete(session)
       // The refusal is durable before cancelling the turn; preserve queued user input.
       stop.agent.cancel({ kind: 'hook', reason: 'approval reviewer rejection circuit breaker' }, { keepInbox: true })
@@ -1070,6 +1069,6 @@ export function clampReason(reason: string, max: number): string {
 }
 
 /** Join the text of a content-block list, walking nested tool-result blocks. */
-export function blocksToText(blocks: readonly ContentBlock[]): string {
-  return compatibleTexts(blocks).join('\n')
+export function blocksToText(blocks: Parameters<typeof contentTexts>[0]): string {
+  return contentTexts(blocks).join('\n')
 }

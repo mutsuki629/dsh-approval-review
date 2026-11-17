@@ -1,3 +1,21 @@
+## Mu fork: upstream 0.6.6 integration (2026-11-17)
+
+This fork's `0.6.6-mu.1` merges upstream `7699053` while retaining the native
+Luna Decisions reviewer, English Auto approval label and exact legacy-label
+migration, and host-owned permission presets. Tool-result correlation now uses
+upstream's provenance-checked compatibility reader; modern reviewer children
+establish their read-only tool guards before activation. Zod is a required
+runtime peer shared with the host. See [integration and verification](docs/upstream-0.6.6.md)
+and [Luna configuration](docs/luna-decisions.md).
+
+## DSH 0.2.2 compatibility
+
+The source build now targets DSH **0.2.2-rc.2** with actual host API tests, updated
+tool-result handling, and a read-only subagent adapter. DSH 0.3 prereleases are
+explicitly excluded. See [compatibility and verification](docs/dsh-compatibility.md).
+Install the updated GitHub build and restart DSH; this change does not publish a
+new npm release.
+
 ## 0.6.4: the install half leaves the transaction too
 
 ## OpenAI Luna Decisions (fork feature)
